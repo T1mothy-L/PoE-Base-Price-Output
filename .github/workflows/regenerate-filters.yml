@@ -1,0 +1,46 @@
+name: Regenerate filters
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'latest.json'
+      - '*.filter'
+      - '!* updated.filter'
+      - 'update_filter.py'
+      - '.github/workflows/regenerate-filters.yml'
+  workflow_dispatch:
+
+# Don't let two regen runs race over a push.
+concurrency:
+  group: regenerate-filters
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run update_filter
+        run: python update_filter.py --headless
+
+      - name: Commit regenerated filters
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The space in "<name> updated.filter" means we must quote the
+          # pathspec. Pipe -- separates flags from paths.
+          git add -- '*updated.filter'
+          if git diff --cached --quiet; then
+            echo "No filter changes to commit."
+            exit 0
+          fi
+          git commit -m "filters: regenerate from latest.json"
+          git push
