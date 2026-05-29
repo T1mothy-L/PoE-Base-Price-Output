@@ -45,9 +45,15 @@ except ImportError:  # pragma: no cover -- only hit on tk-less runners
     messagebox = None  # type: ignore[assignment]
 
 
-ROOT = Path(__file__).parent
-LATEST_PATH = ROOT / "latest.json"
-CONFIG_PATH = ROOT / "filter_config.json"
+# Sources + script live in this directory; derived `<name> updated.filter`
+# files and `latest.json` live one level up (the repo root that public
+# viewers see). When the script is run from the original PoE-Base-Pricer
+# working tree where everything sat at one level, point both at the same
+# directory by editing these constants.
+SCRIPT_DIR = Path(__file__).parent
+REPO_ROOT = SCRIPT_DIR.parent
+LATEST_PATH = REPO_ROOT / "latest.json"
+CONFIG_PATH = SCRIPT_DIR / "filter_config.json"
 
 BEGIN_MARKER = "# BEGIN AUTO"
 END_MARKER = "# END AUTO"
@@ -57,7 +63,7 @@ END_MARKER = "# END AUTO"
 # was generated under the old name self-heals on the next run.
 LEGACY_MARKER_PAIRS = [("# BEGIN HIPNO_AUTO", "# END HIPNO_AUTO")]
 
-# Source .filter files are anything in ROOT without this suffix on the stem.
+# Source .filter files are anything in SCRIPT_DIR without this suffix on the stem.
 # Derived files (the ones we write) get the suffix appended before the .filter
 # extension. Sources are read but never written; derived are regenerated
 # every run, so they can be deleted or moved without consequence.
@@ -283,16 +289,18 @@ def save_config(thresholds: dict[str, float]) -> None:
 
 
 def find_source_filters() -> list[Path]:
-    """Every *.filter in ROOT that isn't itself a derived 'updated' file."""
+    """Every *.filter in SCRIPT_DIR that isn't itself a derived 'updated' file."""
     return sorted(
-        p for p in ROOT.glob("*.filter")
+        p for p in SCRIPT_DIR.glob("*.filter")
         if not p.stem.endswith(DERIVED_SUFFIX)
     )
 
 
 def derived_path_for(source: Path) -> Path:
-    """Map `Foo.filter` -> `Foo updated.filter` (sibling of the source)."""
-    return source.with_name(f"{source.stem}{DERIVED_SUFFIX}.filter")
+    """Map `<SCRIPT_DIR>/Foo.filter` -> `<REPO_ROOT>/Foo updated.filter`,
+    so what external viewers see at the repo root are only the derived
+    filters they should be subscribing to."""
+    return REPO_ROOT / f"{source.stem}{DERIVED_SUFFIX}.filter"
 
 
 def write_atomic(target: Path, content: str) -> None:
@@ -312,7 +320,8 @@ def write_atomic(target: Path, content: str) -> None:
 
 def generate(thresholds: dict[str, float]) -> dict:
     """Generate `<name> updated.filter` for every source `<name>.filter` in
-    ROOT. Sources are never modified; their derived twin is rewritten from
+    SCRIPT_DIR. Sources are never modified; their derived twin (written to
+    REPO_ROOT) is rewritten from
     scratch each run, so the script is naturally idempotent and the
     'filter a updated updated' double-suffix can't happen."""
     validate_thresholds(thresholds)
@@ -323,8 +332,8 @@ def generate(thresholds: dict[str, float]) -> dict:
     sources = find_source_filters()
     if not sources:
         raise FileNotFoundError(
-            f"No source *.filter found in {ROOT}. Drop your filter file(s) "
-            "next to this script and re-run."
+            f"No source *.filter found in {SCRIPT_DIR}. Drop your filter "
+            "file(s) next to this script and re-run."
         )
 
     entries = load_latest(LATEST_PATH)
@@ -370,7 +379,7 @@ class App:
         main.pack(fill="both", expand=True)
 
         # Source-filter discovery
-        ttk.Label(main, text=f"Working dir: {ROOT}",
+        ttk.Label(main, text=f"Sources: {SCRIPT_DIR}\nDerived: {REPO_ROOT}",
                   foreground="#444", wraplength=480).grid(
             row=0, column=0, columnspan=3, sticky="w")
         ttk.Label(main, text="Sources detected (each gets a '<name> updated.filter'):").grid(

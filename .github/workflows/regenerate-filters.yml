@@ -5,9 +5,8 @@ on:
     branches: [main]
     paths:
       - 'latest.json'
-      - '*.filter'
-      - '!* updated.filter'
-      - 'update_filter.py'
+      - 'internal/*.filter'
+      - 'internal/update_filter.py'
       - '.github/workflows/regenerate-filters.yml'
   workflow_dispatch:
 
@@ -29,14 +28,14 @@ jobs:
           python-version: '3.12'
 
       - name: Run update_filter
-        run: python update_filter.py --headless
+        run: python internal/update_filter.py --headless
 
       - name: Commit regenerated filters
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # The space in "<name> updated.filter" means we must quote the
-          # pathspec. Pipe -- separates flags from paths.
+          # Derived filters live at repo root; quote because of the space
+          # in "<name> updated.filter".
           git add -- '*updated.filter'
           if git diff --cached --quiet; then
             echo "No filter changes to commit."
