@@ -20,8 +20,8 @@ A short generator script (`internal/update_filter.py`) reads [`latest.json`](lat
 
 | Tier | Median value          | Visual                                          |
 |------|-----------------------|-------------------------------------------------|
-| S    | ≥ 150 exalts          | font 45, red border, red star on minimap, loud alert |
-| A    | ≥ 50 exalts           | font 45, red text on white bg, red circle       |
+| S    | ≥ 100 exalts          | font 45, red border, red star on minimap, loud alert |
+| A    | ≥ 40 exalts           | font 45, red text on white bg, red circle       |
 | B    | ≥ 10 exalts           | font 40, white-on-dark-red, brown circle        |
 | no-data | (currently no listings) | font 40, black box with white text          |
 | (below B floor) | < 10 exalts  | no rule emitted - falls through to base filter |
