@@ -1,10 +1,10 @@
-# PoE2 Item Filters — auto-priced
+# PoE2 Item Filters - auto-priced
 
 Path of Exile 2 item filters with current white-base trade prices folded into the visual tier rules. Updated automatically every few hours.
 
 ## What to grab
 
-The files at the **repo root** ending in `updated.filter` are the ones you want to subscribe to in-game. Example: [`Hipno T16 Base Farm updated.filter`](Hipno%20T16%20Base%20Farm%20updated.filter).
+The files at the **repo root** ending in `updated.filter` are the ones you want to download.
 
 Do **not** use anything under [`internal/`](internal) — those are the un-priced source filters that the generator reads from.
 
@@ -24,9 +24,9 @@ A short generator script (`internal/update_filter.py`) reads [`latest.json`](lat
 | A    | ≥ 50 exalts           | font 45, red text on white bg, red circle       |
 | B    | ≥ 10 exalts           | font 40, white-on-dark-red, brown circle        |
 | no-data | (currently no listings) | font 40, black box with white text          |
-| (below B floor) | < 10 exalts  | no rule emitted — falls through to base filter |
+| (below B floor) | < 10 exalts  | no rule emitted - falls through to base filter |
 
-Because PoE2 filters are first-match-wins, the price-driven block at the top wins; the rest of the source filter still handles any base the price tracker isn't watching.
+Tier Floors may change during the league.
 
 ## `latest.json` shape
 
@@ -38,15 +38,15 @@ Because PoE2 filters are first-match-wins, the price-driven block at the top win
 ]
 ```
 
-- `base` — exact in-game base name.
-- `min_ilvl` — minimum item level the entry tracks. Same base can appear at multiple ilvls.
-- `median_exalts` — median exalt-equivalent value of the 10 cheapest current listings (across exalted / chaos / annul / divine), or `null` if the base has no listings.
+- `base` - exact in-game base name.
+- `min_ilvl` - minimum item level the entry tracks. Same base can appear at multiple ilvls.
+- `median_exalts` - median exalt-equivalent value of the 10 cheapest current listings (across exalted / chaos / annul / divine), or `null` if the base has no listings.
 
 Source data comes from the private [PoE-Base-Pricer](https://github.com/T1mothy-L/PoE-Base-Pricer) repo and is mirrored here by a GitHub Action.
 
 ## Refresh cadence
 
-Every push to `latest.json` (auto-mirrored from the price tracker every few hours) triggers a regeneration of every `<name> updated.filter`. You can pull a fresh copy any time without re-installing — the file name doesn't change.
+Every push to `latest.json` (auto-mirrored from the price tracker every few hours) triggers a regeneration of every `<name> updated.filter`. 
 
 ## Credits
 
