@@ -26,7 +26,7 @@ A short generator script (`internal/update_filter.py`) reads [`latest.json`](lat
 | no-data | (currently no listings) | font 40, black box with white text          |
 | (below B floor) | < 10 exalts  | no rule emitted - falls through to base filter |
 
-Tier Floors may change during the league.
+Tier floors may change during the league.
 
 ## `latest.json` shape
 
