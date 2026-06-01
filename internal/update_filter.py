@@ -63,6 +63,12 @@ END_MARKER = "# END AUTO"
 # was generated under the old name self-heals on the next run.
 LEGACY_MARKER_PAIRS = [("# BEGIN HIPNO_AUTO", "# END HIPNO_AUTO")]
 
+# On a fresh source filter (no markers yet), the managed block is inserted
+# right after the NeverSink block whose header contains this anchor — i.e.
+# just below the "twice-corrupted magic" exotic-state rule. If the anchor
+# isn't present in the file, the block is prepended at the very top instead.
+ANCHOR = "twicecorruptedmagic !exotics_ctier"
+
 # Source .filter files are anything in SCRIPT_DIR without this suffix on the stem.
 # Derived files (the ones we write) get the suffix appended before the .filter
 # extension. Sources are read but never written; derived are regenerated
@@ -76,7 +82,12 @@ TIER_ORDER = ["S", "A", "B"]
 # at all and fall through to the downstream filter rules.
 RENDER_ORDER = ["S", "A", "B", "NO_DATA"]
 
-DEFAULT_THRESHOLDS = {"S": 100.0, "A": 40.0, "B": 10.0}
+# Tier thresholds are expressed as a percentage of a Divine Orb's value
+# (S=90 means a base whose median is >= 90% of a divine). At generation time
+# they're converted to absolute exalt floors using the divine->exalt rate
+# carried in latest.json ("rates_to_exalt.divine"), so the ladder tracks the
+# divine price through the league instead of drifting as exalt/divine moves.
+DEFAULT_THRESHOLDS = {"S": 90.0, "A": 20.0, "B": 8.0}
 
 # Visual styling per class. Colors and sound ids for S/A/B are lifted from
 # existing high-tier blocks in Hipno T16 Base Farm.filter so the auto-section
@@ -124,14 +135,27 @@ TIER_STYLES = {
 # Pure logic
 # ============================================================
 
-def load_latest(path: Path) -> list[dict]:
-    """Read latest.json. Null medians are kept and classified as NO_DATA."""
+def load_latest(path: Path) -> tuple[list[dict], dict[str, float]]:
+    """Read latest.json -> (items, rates_to_exalt).
+
+    Two shapes are accepted:
+      - current: an object ``{"rates_to_exalt": {...}, "items": [...]}`` where
+        the priced bases live under "items" and currency rates (divine, chaos,
+        ...) expressed in exalts live under "rates_to_exalt".
+      - legacy: a top-level JSON array of entries, with no rate block — rates
+        come back as {} and the divine-percentage ladder can't be resolved
+        (see generate()).
+    Null medians are kept and classified as NO_DATA."""
     with open(path, encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    if isinstance(data, dict):
+        return data.get("items", []), data.get("rates_to_exalt", {})
+    return data, {}
 
 
-def classify(median: float | None, thresholds: dict[str, float]) -> str | None:
-    """Map a median to one of S/A/B/NO_DATA, or None when below B's floor.
+def classify(median: float | None, floors: dict[str, float]) -> str | None:
+    """Map a median (in exalts) to one of S/A/B/NO_DATA, or None when below
+    B's floor. `floors` are absolute exalt cutoffs (see resolve_floors()).
 
     - None median -> NO_DATA (no listings; user wants to see it as a black box).
     - median >= S/A/B floor -> that tier.
@@ -141,19 +165,31 @@ def classify(median: float | None, thresholds: dict[str, float]) -> str | None:
     if median is None:
         return "NO_DATA"
     for tier in TIER_ORDER:
-        if median >= thresholds[tier]:
+        if median >= floors[tier]:
             return tier
     return None
 
 
-def bucket(entries: list[dict], thresholds: dict[str, float]
+def resolve_floors(thresholds: dict[str, float], divine_rate: float
+                   ) -> dict[str, float]:
+    """Convert percent-of-divine tier thresholds into absolute exalt floors.
+
+    `thresholds` map each tier to a percentage of a Divine Orb (S=90 means 90%
+    of a divine). `divine_rate` is the value of one divine in exalts
+    (latest.json's rates_to_exalt["divine"]). The result is in the same unit
+    as median_exalts, so classify() can compare directly."""
+    return {tier: (pct / 100.0) * divine_rate for tier, pct in thresholds.items()}
+
+
+def bucket(entries: list[dict], floors: dict[str, float]
            ) -> dict[tuple[int, str], list[str]]:
-    """Bucket entries by (min_ilvl, class). Entries classified as None
-    (below B's floor) are dropped so no rule is emitted for them. Bases
-    sorted within a bucket for stable diffs."""
+    """Bucket entries by (min_ilvl, class). `floors` are absolute exalt cutoffs
+    (see resolve_floors()). Entries classified as None (below B's floor) are
+    dropped so no rule is emitted for them. Bases sorted within a bucket for
+    stable diffs."""
     buckets: dict[tuple[int, str], list[str]] = {}
     for e in entries:
-        klass = classify(e.get("median_exalts"), thresholds)
+        klass = classify(e.get("median_exalts"), floors)
         if klass is None:
             continue
         buckets.setdefault((e["min_ilvl"], klass), []).append(e["base"])
@@ -222,12 +258,16 @@ def render_managed_block(buckets: dict[tuple[int, str], list[str]],
 
 
 def splice(file_text: str, managed_block: str) -> str:
-    """Insert managed_block at line 1, or replace the existing one in place.
+    """Insert managed_block into file_text, or replace the existing one in place.
 
-    Recognises both the current marker pair and any LEGACY_MARKER_PAIRS,
-    so files that were generated under an older marker name are migrated
-    cleanly on the next run rather than ending up with two stacked
-    managed blocks."""
+    If the file already carries a marker pair (the current one or any
+    LEGACY_MARKER_PAIRS), the block between the markers is replaced in place,
+    so files generated under an older marker name migrate cleanly rather than
+    ending up with two stacked managed blocks.
+
+    On a fresh file with no markers (the normal path — source filters carry
+    none), the block is inserted right after the ANCHOR block; if the anchor
+    isn't found, it's prepended at the very top."""
     pairs_to_check = [(BEGIN_MARKER, END_MARKER), *LEGACY_MARKER_PAIRS]
     for begin, end in pairs_to_check:
         begin_idx = file_text.find(begin)
@@ -249,20 +289,39 @@ def splice(file_text: str, managed_block: str) -> str:
         end_line_end = (end_line_end + 1) if end_line_end != -1 else len(file_text)
         return file_text[:begin_idx] + managed_block.rstrip("\n") + "\n" + file_text[end_line_end:]
 
-    # No marker pair found in the file — first run, prepend with a blank
-    # line separating from the original content.
+    # No marker pair found in the file (the normal path — source filters
+    # carry no markers). Insert the managed block right after the ANCHOR
+    # block so our price rules sit just below it.
+    anchor_idx = file_text.find(ANCHOR)
+    if anchor_idx != -1:
+        # Filter blocks are contiguous (no internal blank lines) and separated
+        # by a blank line, so the first '\n\n' at/after the anchor marks the
+        # gap between the anchor block and whatever follows. Insert there.
+        gap = file_text.find("\n\n", anchor_idx)
+        if gap != -1:
+            block_end = gap + 1  # index of the '\n' terminating the last block line
+            return (
+                file_text[:block_end]
+                + "\n" + managed_block.rstrip("\n") + "\n"
+                + file_text[block_end:]
+            )
+
+    # Anchor missing (or it ran to EOF with no trailing blank) — prepend at
+    # the top with a blank line separating from the original content.
     return managed_block.rstrip("\n") + "\n\n" + file_text
 
 
 def validate_thresholds(thresholds: dict[str, float]) -> None:
-    """Strictly decreasing S > A > B, and B > 0 (so anything between 0 and
-    B is unambiguously below the show ladder)."""
+    """Tier thresholds are percentages of a Divine Orb. Require strictly
+    decreasing S > A > B and B > 0, so anything between 0 and B is
+    unambiguously below the show ladder."""
     s, a, b = thresholds["S"], thresholds["A"], thresholds["B"]
     if b <= 0:
-        raise ValueError(f"Tier B floor must be > 0 (got {b}).")
+        raise ValueError(f"Tier B threshold (% of divine) must be > 0 (got {b}).")
     if not (s > a > b):
         raise ValueError(
-            f"Tier floors must strictly decrease: S({s}) > A({a}) > B({b})."
+            f"Tier thresholds (% of divine) must strictly decrease: "
+            f"S({s}) > A({a}) > B({b})."
         )
 
 
@@ -336,8 +395,17 @@ def generate(thresholds: dict[str, float]) -> dict:
             "file(s) next to this script and re-run."
         )
 
-    entries = load_latest(LATEST_PATH)
-    buckets = bucket(entries, thresholds)
+    items, rates = load_latest(LATEST_PATH)
+    divine_rate = rates.get("divine")
+    if not divine_rate or divine_rate <= 0:
+        raise ValueError(
+            f"{LATEST_PATH.name} is missing a positive 'rates_to_exalt.divine' "
+            "rate, which is needed to convert the percent-of-divine tier "
+            "thresholds into prices. Re-run the price tracker to regenerate "
+            "latest.json with currency rates."
+        )
+    floors = resolve_floors(thresholds, divine_rate)
+    buckets = bucket(items, floors)
     block = render_managed_block(buckets, source_label=LATEST_PATH.name)
 
     written: list[str] = []
@@ -353,7 +421,7 @@ def generate(thresholds: dict[str, float]) -> dict:
     return {
         "rule_count": len(buckets),
         "ilvl_bands": ilvls,
-        "tracked_entries": len(entries),
+        "tracked_entries": len(items),
         "sources": [s.name for s in sources],
         "written": written,
     }
@@ -392,11 +460,12 @@ class App:
 
         # Tier ladder
         ttk.Separator(main).grid(row=3, column=0, columnspan=3, sticky="we", pady=(8, 8))
-        ttk.Label(main, text="Price-tier floors (exalts)").grid(
+        ttk.Label(main, text="Price-tier thresholds (% of a Divine Orb)").grid(
             row=4, column=0, columnspan=3, sticky="w")
-        ttk.Label(main, text="Each tier triggers when median >= its floor. S > A > B > 0. "
-                  "Items priced below B get no rule (fall through to downstream filter rules); "
-                  "items with no listings show as a black box.",
+        ttk.Label(main, text="Each tier triggers when a base's median is >= that % of a "
+                  "divine's value (converted to exalts using the divine rate in latest.json). "
+                  "S > A > B > 0. Items priced below B get no rule (fall through to downstream "
+                  "filter rules); items with no listings show as a black box.",
                   foreground="#666", wraplength=480).grid(
             row=5, column=0, columnspan=3, sticky="w", pady=(0, 6))
 

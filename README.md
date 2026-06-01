@@ -18,29 +18,36 @@ Do **not** use anything under [`internal/`](internal) — those are the un-price
 
 A short generator script (`internal/update_filter.py`) reads [`latest.json`](latest.json) and prepends a managed block of `Show` rules at the top of each source filter, bucketing each tracked white base into a price tier:
 
-| Tier | Median value          | Visual                                          |
-|------|-----------------------|-------------------------------------------------|
-| S    | ≥ 100 exalts          | font 45, red border, red star on minimap, loud alert |
-| A    | ≥ 40 exalts           | font 45, red text on white bg, red circle       |
-| B    | ≥ 10 exalts           | font 40, white-on-dark-red, brown circle        |
+| Tier | Median value            | Visual                                          |
+|------|-------------------------|-------------------------------------------------|
+| S    | ≥ 90% of a divine       | font 45, red border, red star on minimap, loud alert |
+| A    | ≥ 20% of a divine       | font 45, red text on white bg, red circle       |
+| B    | ≥ 8% of a divine        | font 40, white-on-dark-red, brown circle        |
 | no-data | (currently no listings) | font 40, black box with white text          |
-| (below B floor) | < 10 exalts  | no rule emitted - falls through to base filter |
+| (below B floor) | < 8% of a divine | no rule emitted - falls through to base filter |
 
-Tier floors may change during the league.
+Tier thresholds are percentages of a Divine Orb, converted to exalts at generation time using the live `divine` rate in [`latest.json`](latest.json), so the ladder tracks the divine price as the exalt/divine rate drifts during the league. The percentages may also change during the league.
 
 ## `latest.json` shape
 
 ```json
-[
-  { "base": "Ancestral Tiara", "min_ilvl": 82, "median_exalts": 28.78 },
-  { "base": "Sekhema Sandals", "min_ilvl": 82, "median_exalts": 209.02 },
-  { "base": "Gold Ring",       "min_ilvl": 80, "median_exalts": null  }
-]
+{
+  "rates_to_exalt": { "exalted": 1.0, "chaos": 0.59, "divine": 53.57, "annul": 7.70 },
+  "items": [
+    { "base": "Ancestral Tiara", "min_ilvl": 82, "median_exalts": 28.78 },
+    { "base": "Sekhema Sandals", "min_ilvl": 82, "median_exalts": 209.02 },
+    { "base": "Gold Ring",       "min_ilvl": 80, "median_exalts": null  }
+  ]
+}
 ```
 
-- `base` - exact in-game base name.
-- `min_ilvl` - minimum item level the entry tracks. Same base can appear at multiple ilvls.
-- `median_exalts` - median exalt-equivalent value of the 10 cheapest current listings (across exalted / chaos / annul / divine), or `null` if the base has no listings.
+- `rates_to_exalt` - currency conversion rates used to normalise prices to exalts.
+- `items` - the list of priced bases. Each entry has:
+  - `base` - exact in-game base name.
+  - `min_ilvl` - minimum item level the entry tracks. Same base can appear at multiple ilvls.
+  - `median_exalts` - median exalt-equivalent value of the 10 cheapest current listings (across exalted / chaos / annul / divine), or `null` if the base has no listings.
+
+The generator also still accepts the older top-level-array shape (just the `items` list) for backward compatibility.
 
 Source data comes from the private [PoE-Base-Pricer](https://github.com/T1mothy-L/PoE-Base-Pricer) repo and is mirrored here by a GitHub Action.
 
