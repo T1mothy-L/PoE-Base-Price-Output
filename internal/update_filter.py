@@ -87,7 +87,7 @@ RENDER_ORDER = ["S", "A", "B", "NO_DATA"]
 # they're converted to absolute exalt floors using the divine->exalt rate
 # carried in latest.json ("rates_to_exalt.divine"), so the ladder tracks the
 # divine price through the league instead of drifting as exalt/divine moves.
-DEFAULT_THRESHOLDS = {"S": 60.0, "A": 20.0, "B": 7.0}
+DEFAULT_THRESHOLDS = {"S": 60.0, "A": 15.0, "B": 5.0}
 
 # Visual styling per class. Colors and sound ids for S/A/B are lifted from
 # existing high-tier blocks in Hipno T16 Base Farm.filter so the auto-section
